@@ -9,26 +9,34 @@
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
 
-// ===== JSON 라이브러리 추가 =====
+// ===== JSON 라이브러리 =====
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
+
+// UTF-8 std::string -> UTF-16 CString
+static CString Utf8ToCStr(const std::string& s)
+{
+    if (s.empty()) return CString();
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), nullptr, 0);
+    CString w;
+    LPWSTR buf = w.GetBuffer(wlen);
+    MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), buf, wlen);
+    w.ReleaseBuffer(wlen);
+    return w;
+}
+
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
 
 using namespace Pylon;
-using namespace cv;
 
 // ===================== 메시지 맵 =====================
 BEGIN_MESSAGE_MAP(CCanClientDlg, CDialogEx)
     ON_BN_CLICKED(IDC_BTN_START, &CCanClientDlg::OnBnClickedBtnStart)
     ON_WM_DESTROY()
     ON_WM_TIMER()
-    ON_WM_CTLCOLOR()
-    ON_NOTIFY(NM_CUSTOMDRAW, IDC_LIST_HISTORY, &CCanClientDlg::OnCustomDrawHistory)
-    ON_NOTIFY(NM_DBLCLK, IDC_LIST_HISTORY, &CCanClientDlg::OnDblClkHistory)
-
 END_MESSAGE_MAP()
 
 // ===================== 생성자 =====================
@@ -50,6 +58,21 @@ BOOL CCanClientDlg::OnInitDialog()
     CDialogEx::OnInitDialog();
     SetIcon(m_hIcon, TRUE);
     SetIcon(m_hIcon, FALSE);
+
+    // ===== 기존 히스토리 파일 초기화 =====
+    {
+        CString folder = _T("C:\\CanClient");
+        CreateDirectory(folder, NULL);
+        CString filePath = folder + _T("\\history.txt");
+        CFile file;
+        if (file.Open(filePath, CFile::modeCreate | CFile::modeWrite)) {
+            file.Close(); // 빈 파일로 새로 생성
+        }
+
+        m_history.clear();               // 메모리 내 히스토리 초기화
+        if (m_historyList.GetSafeHwnd()) // 리스트뷰도 비움
+            m_historyList.DeleteAllItems();
+    }
 
     // ===== WSA 초기화 =====
     WSADATA wsa;
@@ -80,10 +103,16 @@ BOOL CCanClientDlg::OnInitDialog()
         m_camTop.Open();
         m_camFront.Open();
 
+        // 미리보기용: 최신 프레임만 유지
         m_camTop.StartGrabbing(GrabStrategy_LatestImageOnly);
         m_camFront.StartGrabbing(GrabStrategy_LatestImageOnly);
 
-        m_timerId = SetTimer(1, 33, nullptr);
+        // 변환기 기본 설정: 미리보기/저장 공용 BGR8
+        m_converter.OutputPixelFormat = PixelType_BGR8packed;
+        m_converter.OutputBitAlignment = OutputBitAlignment_MsbAligned;
+
+        // 미리보기 타이머
+        m_timerId = SetTimer(1, 33, nullptr); // ~30fps
     }
     catch (const GenericException& e) {
         CString msg(e.GetDescription());
@@ -126,22 +155,24 @@ void CCanClientDlg::OnTimer(UINT_PTR nIDEvent)
                 m_camTop.RetrieveResult(50, grabTop, TimeoutHandling_Return) &&
                 grabTop->GrabSucceeded())
             {
-                m_converter.OutputPixelFormat = PixelType_BGR8packed;
+                // BGR8 변환 (미리보기)
                 m_converter.Convert(m_pylonImage, grabTop);
-                Mat img((int)grabTop->GetHeight(), (int)grabTop->GetWidth(),
-                    CV_8UC3, (void*)m_pylonImage.GetBuffer());
-                DrawMatToCtrl(img, GetDlgItem(IDC_CAM_TOP));
+                const uint8_t* buf = reinterpret_cast<const uint8_t*>(m_pylonImage.GetBuffer());
+                int w = static_cast<int>(grabTop->GetWidth());
+                int h = static_cast<int>(grabTop->GetHeight());
+                DrawImageBufferToCtrl(buf, w, h, GetDlgItem(IDC_CAM_TOP));
             }
 
             if (m_camFront.IsGrabbing() &&
                 m_camFront.RetrieveResult(50, grabFront, TimeoutHandling_Return) &&
                 grabFront->GrabSucceeded())
             {
-                m_converter.OutputPixelFormat = PixelType_BGR8packed;
+                // BGR8 변환 (미리보기)
                 m_converter.Convert(m_pylonImage, grabFront);
-                Mat img((int)grabFront->GetHeight(), (int)grabFront->GetWidth(),
-                    CV_8UC3, (void*)m_pylonImage.GetBuffer());
-                DrawMatToCtrl(img, GetDlgItem(IDC_CAM_FRONT));
+                const uint8_t* buf = reinterpret_cast<const uint8_t*>(m_pylonImage.GetBuffer());
+                int w = static_cast<int>(grabFront->GetWidth());
+                int h = static_cast<int>(grabFront->GetHeight());
+                DrawImageBufferToCtrl(buf, w, h, GetDlgItem(IDC_CAM_FRONT));
             }
         }
         catch (...) {
@@ -151,42 +182,72 @@ void CCanClientDlg::OnTimer(UINT_PTR nIDEvent)
     CDialogEx::OnTimer(nIDEvent);
 }
 
-// ===================== 이미지 출력 =====================
-void CCanClientDlg::DrawMatToCtrl(const Mat& img, CWnd* pWnd)
+// ===================== BGR8 버퍼 출력 (종횡비 유지 + HALFTONE) =====================
+void CCanClientDlg::DrawImageBufferToCtrl(const uint8_t* data, int width, int height, CWnd* pWnd)
 {
-    if (!pWnd || img.empty()) return;
+    if (!pWnd || !data || width <= 0 || height <= 0) return;
+
     CClientDC dc(pWnd);
     CRect rc; pWnd->GetClientRect(&rc);
 
+    // 목표 영역 대비 종횡비 유지: 레터박스 영역 계산
+    const double srcAR = static_cast<double>(width) / static_cast<double>(height);
+    const double dstAR = static_cast<double>(rc.Width()) / static_cast<double>(rc.Height());
+
+    int drawW, drawH, drawX, drawY;
+    if (srcAR > dstAR) {
+        drawW = rc.Width();
+        drawH = static_cast<int>(drawW / srcAR);
+        drawX = 0;
+        drawY = (rc.Height() - drawH) / 2;
+    }
+    else {
+        drawH = rc.Height();
+        drawW = static_cast<int>(drawH * srcAR);
+        drawX = (rc.Width() - drawW) / 2;
+        drawY = 0;
+    }
+
+    // 레터박스 배경(검정) 지우기
+    CBrush brush(RGB(0, 0, 0));
+    dc.FillRect(rc, &brush);
+
+    // 고품질 스케일링
+    int oldMode = SetStretchBltMode(dc.GetSafeHdc(), HALFTONE);
+    SetBrushOrgEx(dc.GetSafeHdc(), 0, 0, nullptr); // HALFTONE 권장
+
+    // DIB 정보(BGR8)
     BITMAPINFO bmi = {};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth = img.cols;
-    bmi.bmiHeader.biHeight = -img.rows;
+    bmi.bmiHeader.biWidth = width;
+    bmi.bmiHeader.biHeight = -height; // 상단부터
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 24;
     bmi.bmiHeader.biCompression = BI_RGB;
 
     StretchDIBits(dc.GetSafeHdc(),
-        0, 0, rc.Width(), rc.Height(),
-        0, 0, img.cols, img.rows,
-        img.data, &bmi, DIB_RGB_COLORS, SRCCOPY);
+        drawX, drawY, drawW, drawH,
+        0, 0, width, height,
+        data, &bmi, DIB_RGB_COLORS, SRCCOPY);
+
+    SetStretchBltMode(dc.GetSafeHdc(), oldMode);
 }
 
 // ===================== 촬영 및 전송 =====================
 void CCanClientDlg::OnBnClickedBtnStart()
 {
-    // ===== 카메라 타이머 일시 중지 (충돌 방지) =====
+    // 타이머 일시 중지 (카메라 충돌 방지)
     if (m_timerId) {
         KillTimer(m_timerId);
     }
+
     GetDlgItem(IDC_BTN_START)->EnableWindow(FALSE);
 
     try {
-        // ===== 저장 폴더 준비 =====
         CString folder = L"C:\\CanClient\\captures";
         CreateDirectory(folder, NULL);
 
-        if (!m_camTop.IsOpen())  m_camTop.Open();
+        if (!m_camTop.IsOpen())   m_camTop.Open();
         if (!m_camFront.IsOpen()) m_camFront.Open();
 
         if (!m_camTop.IsGrabbing())
@@ -194,91 +255,77 @@ void CCanClientDlg::OnBnClickedBtnStart()
         if (!m_camFront.IsGrabbing())
             m_camFront.StartGrabbing(GrabStrategy_LatestImageOnly);
 
-        Sleep(100); // 카메라 안정화 대기
+        Sleep(120); // 카메라 안정화
 
-        // ===== 변수 선언 (스코프 문제 방지) =====
         CGrabResultPtr grabTop, grabFront;
-        std::string topPath, frontPath;
         std::string topResponse, frontResponse;
 
-        // ===== 1. TOP 이미지 캡처 및 전송 =====
+        // ===== 1) TOP 캡처 & 저장(PNG, 무손실) & 전송 =====
         if (m_camTop.RetrieveResult(800, grabTop, TimeoutHandling_Return) &&
             grabTop->GrabSucceeded())
         {
-            CImageFormatConverter converter;
-            converter.OutputPixelFormat = PixelType_BGR8packed;
             CPylonImage imgTop;
-            converter.Convert(imgTop, grabTop);
+            m_converter.Convert(imgTop, grabTop); // BGR8
 
-            Mat topMat((int)grabTop->GetHeight(), (int)grabTop->GetWidth(),
-                CV_8UC3, (void*)imgTop.GetBuffer());
+            std::string topPath = "C:\\CanClient\\captures\\capture_" +
+                std::to_string(time(NULL)) + "_top.png";
 
-            topPath = "C:\\CanClient\\captures\\capture_" +
-                std::to_string(time(NULL)) + "_top.jpg";
+            // 버전 호환을 위해 옵션 없이 저장 (무손실 PNG)
+            CImagePersistence::Save(ImageFileFormat_Png, topPath.c_str(), imgTop);
 
-            if (imwrite(topPath, topMat)) {
-                OutputDebugString(L"[INFO] TOP 이미지 저장 완료\n");
-                SendImageToServer(topPath, topResponse);
-                OutputDebugStringA(("[TOP 응답] " + topResponse + "\n").c_str());
-            }
+            OutputDebugString(L"[INFO] TOP 이미지 저장 완료(PNG)\n");
+            SendImageToServer(topPath, topResponse);
+            OutputDebugStringA(("[TOP 응답] " + topResponse + "\n").c_str());
         }
 
         Sleep(200); // 서버 처리 대기
 
-        // ===== 2. FRONT 이미지 캡처 및 전송 =====
+        // ===== 2) FRONT 캡처 & 저장(PNG, 무손실) & 전송 =====
         if (m_camFront.RetrieveResult(800, grabFront, TimeoutHandling_Return) &&
             grabFront->GrabSucceeded())
         {
-            CImageFormatConverter converter;
-            converter.OutputPixelFormat = PixelType_BGR8packed;
             CPylonImage imgFront;
-            converter.Convert(imgFront, grabFront);
+            m_converter.Convert(imgFront, grabFront); // BGR8
 
-            Mat frontMat((int)grabFront->GetHeight(), (int)grabFront->GetWidth(),
-                CV_8UC3, (void*)imgFront.GetBuffer());
+            std::string frontPath = "C:\\CanClient\\captures\\capture_" +
+                std::to_string(time(NULL)) + "_front.png";
 
-            frontPath = "C:\\CanClient\\captures\\capture_" +
-                std::to_string(time(NULL)) + "_front.jpg";
+            CImagePersistence::Save(ImageFileFormat_Png, frontPath.c_str(), imgFront);
 
-            if (imwrite(frontPath, frontMat)) {
-                OutputDebugString(L"[INFO] FRONT 이미지 저장 완료\n");
-                SendImageToServer(frontPath, frontResponse);
-                OutputDebugStringA(("[FRONT 응답] " + frontResponse + "\n").c_str());
+            OutputDebugString(L"[INFO] FRONT 이미지 저장 완료(PNG)\n");
+            SendImageToServer(frontPath, frontResponse);
+            OutputDebugStringA(("[FRONT 응답] " + frontResponse + "\n").c_str());
+
+            // ===== 3) 검사 결과 처리 =====
+            InspectionResult result;
+            result.productId = GenerateProductId();
+            result.timestamp = GetCurrentTimestamp();
+
+            if (ParseJsonResponse(frontResponse, result)) {
+                UpdateCurrentResult(result);
+                AddToHistory(result);
+                OutputDebugString(L"[SUCCESS] 검사 완료 및 결과 표시\n");
             }
-        }
-
-        // ===== 3. 검사 결과 구성 =====
-        InspectionResult result;
-        result.productId = GenerateProductId();
-        result.timestamp = GetCurrentTimestamp();
-        result.imgTopPath = CString(topPath.c_str());
-        result.imgFrontPath = CString(frontPath.c_str());
-
-        // ===== 4. JSON 파싱 =====
-        if (ParseJsonResponse(frontResponse, result)) {
-            UpdateCurrentResult(result);
-            AddToHistory(result);
-            OutputDebugString(L"[SUCCESS] 검사 완료 및 결과 표시\n");
-        }
-        else {
-            OutputDebugString(L"[WARNING] JSON 파싱 실패, 원본 사용\n");
-            result.defectType = _T("에러");
-            result.defectDetail = CString(frontResponse.c_str());
-            UpdateCurrentResult(result);
-            AddToHistory(result);
+            else {
+                // JSON 파싱 실패 → 원본 문자열 그대로 표시
+                OutputDebugStringA(("[WARNING] JSON 파싱 실패, 원본: " + frontResponse + "\n").c_str());
+                result.defectType = _T("에러");
+                result.defectDetail = Utf8ToCStr(frontResponse);
+                UpdateCurrentResult(result);
+                AddToHistory(result);
+            }
         }
     }
     catch (const GenericException& e) {
         CString msg(e.GetDescription());
         AfxMessageBox(msg);
-        OutputDebugString(L"[ERROR] 카메라 예외 발생\n");
+        OutputDebugString(L"[ERROR] 카메라 에러\n");
     }
 
-    // ===== 타이머 재시작 =====
+    // 타이머 재시작
     m_timerId = SetTimer(1, 33, nullptr);
     GetDlgItem(IDC_BTN_START)->EnableWindow(TRUE);
 }
-
 
 // ===================== TCP 전송 및 응답 수신 =====================
 bool CCanClientDlg::SendImageToServer(const std::string& imgPath, std::string& response)
@@ -294,7 +341,7 @@ bool CCanClientDlg::SendImageToServer(const std::string& imgPath, std::string& r
 
     std::streamsize size = file.tellg();
     file.seekg(0, std::ios::beg);
-    std::vector<char> buffer(size);
+    std::vector<char> buffer(static_cast<size_t>(size));
 
     if (!file.read(buffer.data(), size)) {
         OutputDebugString(L"[ERROR] 파일 읽기 실패\n");
@@ -312,10 +359,10 @@ bool CCanClientDlg::SendImageToServer(const std::string& imgPath, std::string& r
     sockaddr_in serverAddr = {};
     serverAddr.sin_family = AF_INET;
     //serverAddr.sin_port = htons(9000);
-	//inet_pton(AF_INET, "127.0.0.1", &serverAddr.sin_addr);    // 로컬 테스트용
+    //inet_pton(AF_INET, "127.0.0.1", &serverAddr.sin_addr);
 
     serverAddr.sin_port = htons(9000);
-	inet_pton(AF_INET, "10.10.21.121", &serverAddr.sin_addr);   // 실제 서버 IP
+    inet_pton(AF_INET, "10.10.21.121", &serverAddr.sin_addr);
 
     if (connect(sock, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
         int err = WSAGetLastError();
@@ -337,10 +384,11 @@ bool CCanClientDlg::SendImageToServer(const std::string& imgPath, std::string& r
         return false;
     }
 
-    // ===== 데이터 전송 =====
+    // ===== 데이터 전송 (sendall) =====
     int totalSent = 0;
     while (totalSent < fileSize) {
-        int sent = send(sock, buffer.data() + totalSent, fileSize - totalSent, 0);
+        int chunk = min(64 * 1024, fileSize - totalSent); // 64KB 청크
+        int sent = send(sock, buffer.data() + totalSent, chunk, 0);
         if (sent <= 0) {
             OutputDebugString(L"[ERROR] 데이터 전송 실패\n");
             closesocket(sock);
@@ -361,7 +409,7 @@ bool CCanClientDlg::SendImageToServer(const std::string& imgPath, std::string& r
     }
     else {
         OutputDebugString(L"[WARNING] 응답 없음\n");
-        response = "";
+        response.clear();
     }
 
     closesocket(sock);
@@ -377,13 +425,12 @@ bool CCanClientDlg::ParseJsonResponse(const std::string& jsonStr, InspectionResu
     }
 
     try {
-        // ===== JSON 파싱 =====
         auto j = json::parse(jsonStr);
 
-        // ===== result 필드 (필수) =====
+        // result 필드 (필수)
         if (j.contains("result")) {
             std::string resultStr = j["result"].get<std::string>();
-            result.defectType = CString(resultStr.c_str());
+            result.defectType = Utf8ToCStr(resultStr);
 
             CStringA log;
             log.Format("[JSON] result = %s\n", resultStr.c_str());
@@ -394,10 +441,10 @@ bool CCanClientDlg::ParseJsonResponse(const std::string& jsonStr, InspectionResu
             return false;
         }
 
-        // ===== reason 필드 (선택) =====
+        // reason 필드 (선택)
         if (j.contains("reason")) {
             std::string reasonStr = j["reason"].get<std::string>();
-            result.defectDetail = CString(reasonStr.c_str());
+            result.defectDetail = Utf8ToCStr(reasonStr);
 
             CStringA log;
             log.Format("[JSON] reason = %s\n", reasonStr.c_str());
@@ -407,10 +454,10 @@ bool CCanClientDlg::ParseJsonResponse(const std::string& jsonStr, InspectionResu
             result.defectDetail = _T("");
         }
 
-        // ===== timestamp 필드 (선택) =====
+        // timestamp 필드 (선택)
         if (j.contains("timestamp")) {
             std::string timestampStr = j["timestamp"].get<std::string>();
-            // 서버에서 보낸 timestamp 사용 (선택사항)
+            // 서버 timestamp 사용하려면:
             // result.timestamp = CString(timestampStr.c_str());
         }
 
@@ -442,18 +489,12 @@ void CCanClientDlg::UpdateCurrentResult(const InspectionResult& result)
     SetDlgItemText(IDC_STATIC_PRODUCT_ID, result.productId);
     SetDlgItemText(IDC_STATIC_DEFECT_TYPE, result.defectType);
 
-    if (result.defectDetail.IsEmpty() || result.defectType == _T("정상"))
+    if (result.defectDetail.IsEmpty() || result.defectType == _T("정상")) {
         SetDlgItemText(IDC_STATIC_DEFECT_DETAIL, _T("-"));
-    else
+    }
+    else {
         SetDlgItemText(IDC_STATIC_DEFECT_DETAIL, result.defectDetail);
-
-    // 색상 매핑
-    if (result.defectType == _T("정상"))      m_currResultColor = RGB(34, 177, 76); // 초록
-    else if (result.defectType == _T("불량"))  m_currResultColor = RGB(237, 28, 36); // 빨강
-    else                                       m_currResultColor = RGB(128, 128, 128); // 회색(에러/기타)
-
-    m_currResultText = result.defectType;
-    GetDlgItem(IDC_STATIC_DEFECT_TYPE)->Invalidate(); // 즉시 갱신
+    }
 }
 
 // ===================== 현재 결과 초기화 =====================
@@ -478,7 +519,43 @@ void CCanClientDlg::AddToHistory(const InspectionResult& result)
 
     SaveHistoryToFile();
     m_historyList.EnsureVisible(idx, FALSE);
-    UpdateStats();
+
+    // 통계 업데이트
+    UpdateStatistics();
+}
+
+// ===================== 통계 갱신 =====================
+void CCanClientDlg::UpdateStatistics()
+{
+    int total = 0, normal = 0, defect = 0;
+    CString today = CTime::GetCurrentTime().Format(_T("%Y-%m-%d"));
+
+    // 오늘 날짜 기준 통계 계산
+    for (const auto& rec : m_history)
+    {
+        if (rec.timestamp.Left(10) == today)
+        {
+            total++;
+            if (rec.defectType == _T("정상"))
+                normal++;
+            else
+                defect++;
+        }
+    }
+
+    // 비율 계산
+    double ratio = (total > 0) ? (normal * 100.0 / total) : 0.0;
+
+    // ===== 문자열 구성 =====
+    CString strToday, strOkNg, strRate;
+    strToday.Format(_T("오늘 검사량 : %d개"), total);
+    strOkNg.Format(_T("정상 : %d개 / 불량 : %d개"), normal, defect);
+    strRate.Format(_T("정상 비율 : %.0f%%"), ratio);
+
+    // ===== UI 갱신 =====
+    SetDlgItemText(IDC_STATIC_TODAY_CNT, strToday);
+    SetDlgItemText(IDC_STATIC_OK_NG, strOkNg);
+    SetDlgItemText(IDC_STATIC_RATE, strRate);
 }
 
 // ===================== 유틸리티 함수 =====================
@@ -511,9 +588,10 @@ void CCanClientDlg::SaveHistoryToFile()
     for (const auto& rec : m_history) {
         CString line;
         line.Format(_T("%s|%s|%s|%s\n"),
-            rec.productId, rec.defectType,
-            rec.defectDetail.IsEmpty() ? _T("-") : rec.defectDetail,
-            rec.timestamp);
+            rec.productId.GetString(),
+            rec.defectType.GetString(),
+            (rec.defectDetail.IsEmpty() ? _T("-") : rec.defectDetail.GetString()),
+            rec.timestamp.GetString());
         file.WriteString(line);
     }
     file.Close();
@@ -533,46 +611,58 @@ void CCanClientDlg::LoadHistoryFromFile()
 
     while (file.ReadString(line))
     {
-        line.Trim(); // 공백/개행 제거
-        if (line.IsEmpty()) continue; // 빈 줄은 스킵
+        line.Trim();
+        if (line.IsEmpty())
+            continue;
 
-        int pos = 0;
+        // 안전한 split (Tokenize 대신)
+        std::vector<CString> tokens;
+        int cur = 0;
+        while (true)
+        {
+            int next = line.Find(_T("|"), cur);
+            if (next == -1)
+            {
+                tokens.push_back(line.Mid(cur));
+                break;
+            }
+            tokens.push_back(line.Mid(cur, next - cur));
+            cur = next + 1;
+        }
+
+        // 최소 4개 필드 있어야 함
+        if (tokens.size() < 4)
+            continue;
+
         InspectionResult rec;
-        rec.productId = line.Tokenize(_T("|"), pos);
-        rec.defectType = line.Tokenize(_T("|"), pos);
-        rec.defectDetail = line.Tokenize(_T("|"), pos);
-        rec.timestamp = line.Tokenize(_T("|"), pos);
-
-        // 방어 처리
-        if (rec.productId.IsEmpty()) continue;
+        rec.productId = tokens[0].Trim();
+        rec.defectType = tokens[1].Trim();
+        rec.defectDetail = tokens[2].Trim();
+        rec.timestamp = tokens[3].Trim();
 
         if (rec.defectDetail == _T("-"))
             rec.defectDetail.Empty();
 
-        // 리스트와 벡터에 추가
-        m_history.push_back(rec);
-
-        int idx = m_historyList.GetItemCount();
-        m_historyList.InsertItem(idx, rec.productId);
-        m_historyList.SetItemText(idx, 1, rec.defectType);
-        m_historyList.SetItemText(idx, 2,
-            rec.defectDetail.IsEmpty() ? _T("-") : rec.defectDetail);
-        m_historyList.SetItemText(idx, 3, rec.timestamp);
-
-        // ===== 안전한 ID 숫자 추출 =====
-        if (rec.productId.GetLength() > 2)
+        if (!rec.productId.IsEmpty())
         {
-            CString tail = rec.productId.Mid(2);  // "CK" 뒤 숫자만 추출
-            int num = _ttoi(tail);
+            m_history.push_back(rec);
+
+            int idx = m_historyList.GetItemCount();
+            m_historyList.InsertItem(idx, rec.productId);
+            m_historyList.SetItemText(idx, 1, rec.defectType);
+            m_historyList.SetItemText(idx, 2,
+                rec.defectDetail.IsEmpty() ? _T("-") : rec.defectDetail);
+            m_historyList.SetItemText(idx, 3, rec.timestamp);
+
+            CString numStr = rec.productId.Mid(2);
+            int num = _ttoi(numStr);
             if (num > maxId) maxId = num;
         }
     }
 
     m_productCounter = maxId + 1;
     file.Close();
-    UpdateStats();
 }
-
 
 // ===================== 종료 =====================
 void CCanClientDlg::OnDestroy()
@@ -585,10 +675,10 @@ void CCanClientDlg::OnDestroy()
     }
 
     try {
-        if (m_camTop.IsGrabbing()) m_camTop.StopGrabbing();
-        if (m_camTop.IsOpen()) m_camTop.Close();
+        if (m_camTop.IsGrabbing())   m_camTop.StopGrabbing();
+        if (m_camTop.IsOpen())       m_camTop.Close();
         if (m_camFront.IsGrabbing()) m_camFront.StopGrabbing();
-        if (m_camFront.IsOpen()) m_camFront.Close();
+        if (m_camFront.IsOpen())     m_camFront.Close();
         PylonTerminate();
     }
     catch (...) {}
@@ -598,114 +688,4 @@ void CCanClientDlg::OnDestroy()
         m_wsaInitialized = false;
         OutputDebugString(L"[INFO] WSA 종료\n");
     }
-}
-
-HBRUSH CCanClientDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
-{
-    HBRUSH hbr = CDialogEx::OnCtlColor(pDC, pWnd, nCtlColor);
-
-    // 결과 Static 컨트롤(예: IDC_STATIC_DEFECT_TYPE)의 텍스트 색 변경
-    if (pWnd->GetDlgCtrlID() == IDC_STATIC_DEFECT_TYPE) {
-        pDC->SetTextColor(m_currResultColor);
-        pDC->SetBkMode(TRANSPARENT);
-        return (HBRUSH)GetStockObject(HOLLOW_BRUSH);
-    }
-    return hbr;
-}
-
-void CCanClientDlg::OnCustomDrawHistory(NMHDR* pNMHDR, LRESULT* pResult)
-{
-    LPNMLVCUSTOMDRAW pCD = reinterpret_cast<LPNMLVCUSTOMDRAW>(pNMHDR);
-
-    switch (pCD->nmcd.dwDrawStage)
-    {
-    case CDDS_PREPAINT:
-        *pResult = CDRF_NOTIFYITEMDRAW;
-        return;
-    case CDDS_ITEMPREPAINT:
-    {
-        int idx = static_cast<int>(pCD->nmcd.dwItemSpec);
-        // m_history는 인덱스와 1:1로 적재됨 (히스토리 적재/로드 코드 이미 있음 :contentReference[oaicite:1]{index=1} :contentReference[oaicite:2]{index=2})
-        if (idx >= 0 && idx < (int)m_history.size())
-        {
-            const auto& rec = m_history[idx];
-            if (rec.defectType == _T("불량"))
-                pCD->clrText = RGB(237, 28, 36); // 빨강
-        }
-        *pResult = CDRF_DODEFAULT;
-        return;
-    }
-    }
-    *pResult = 0;
-}
-
-void CCanClientDlg::UpdateStats()
-{
-    // 오늘 날짜 yyyy-mm-dd로 비교
-    CTime now = CTime::GetCurrentTime();
-    CString today = now.Format(_T("%Y-%m-%d"));
-
-    int totalToday = 0, ok = 0, ng = 0;
-    for (const auto& r : m_history) {
-        if (r.timestamp.Left(10) == today) {
-            totalToday++;
-            if (r.defectType == _T("정상")) ok++;
-            else if (r.defectType == _T("불량")) ng++;
-        }
-    }
-
-    CString s1; s1.Format(_T("오늘 검사: %d건"), totalToday);
-    CString s2; s2.Format(_T("정상 %d / 불량 %d"), ok, ng);
-
-    double rate = (totalToday > 0) ? (100.0 * ok / totalToday) : 0.0;
-    CString s3; s3.Format(_T("정상비율: %.1f%%"), rate);
-
-    SetDlgItemText(IDC_STATIC_TODAY_CNT, s1);
-    SetDlgItemText(IDC_STATIC_OK_NG, s2);
-    SetDlgItemText(IDC_STATIC_RATE, s3);
-}
-
-// ===================== 미리보기 다이얼로그 구현 =====================
-BOOL CPreviewDlg::OnInitDialog()
-{
-    CDialogEx::OnInitDialog();
-    LoadToCtrl(IDC_IMG_LEFT, m_left);
-    LoadToCtrl(IDC_IMG_RIGHT, m_right);
-    return TRUE;
-}
-
-void CPreviewDlg::LoadToCtrl(int id, const CString& path)
-{
-    if (path.IsEmpty()) return;
-
-    CImage img;
-    if (SUCCEEDED(img.Load(path)))
-    {
-        CStatic* pStatic = (CStatic*)GetDlgItem(id);
-        if (!pStatic) return;
-
-        CDC* pDC = pStatic->GetDC();
-        CRect rc; pStatic->GetClientRect(&rc);
-
-        img.Draw(*pDC, 0, 0, rc.Width(), rc.Height(),
-            0, 0, img.GetWidth(), img.GetHeight());
-
-        pStatic->ReleaseDC(pDC);
-    }
-}
-
-// ===================== 리스트 더블클릭 핸들러 =====================
-void CCanClientDlg::OnDblClkHistory(NMHDR* pNMHDR, LRESULT* pResult)
-{
-    POSITION pos = m_historyList.GetFirstSelectedItemPosition();
-    if (!pos) return;
-
-    int idx = m_historyList.GetNextSelectedItem(pos);
-    if (idx < 0 || idx >= (int)m_history.size()) return;
-
-    const auto& rec = m_history[idx];
-    CPreviewDlg dlg(rec.imgTopPath, rec.imgFrontPath);
-    dlg.DoModal();
-
-    *pResult = 0;
 }

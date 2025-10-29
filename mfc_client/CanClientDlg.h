@@ -1,11 +1,9 @@
 ﻿#pragma once
 #include <pylon/PylonIncludes.h>
-#include <opencv2/opencv.hpp>
 #include <vector>
 #include <string>
 
 using namespace Pylon;
-using namespace cv;
 
 // ===== 검사 결과 구조체 =====
 struct InspectionResult
@@ -14,9 +12,6 @@ struct InspectionResult
     CString defectType;     // 판정결과 ("정상" / "불량" / "에러")
     CString defectDetail;   // 불량종류
     CString timestamp;      // 시간
-    CString imgTopPath;    // 추가
-    CString imgFrontPath;  // 추가
-
 };
 
 class CCanClientDlg : public CDialogEx
@@ -40,11 +35,11 @@ private:
     HICON m_hIcon;
 
     // ===== 카메라 =====
-    CInstantCamera m_camTop;
-    CInstantCamera m_camFront;
-    CImageFormatConverter m_converter;
-    CPylonImage m_pylonImage;
-    UINT_PTR m_timerId = 0;
+    CInstantCamera        m_camTop;
+    CInstantCamera        m_camFront;
+    CImageFormatConverter m_converter;   // BGR8 변환용
+    CPylonImage           m_pylonImage;  // 미리보기 공유 버퍼
+    UINT_PTR              m_timerId = 0;
 
     // ===== 네트워크 =====
     bool m_wsaInitialized = false;
@@ -57,7 +52,7 @@ private:
     int m_productCounter = 1012; // CK1012부터 시작
 
     // ===== 헬퍼 함수 =====
-    void DrawMatToCtrl(const cv::Mat& img, CWnd* pWnd);
+    void DrawImageBufferToCtrl(const uint8_t* data, int width, int height, CWnd* pWnd);
 
     // 네트워크 (응답 포함)
     bool SendImageToServer(const std::string& imgPath, std::string& response);
@@ -67,14 +62,7 @@ private:
     void UpdateCurrentResult(const InspectionResult& result);
     void AddToHistory(const InspectionResult& result);
     void ClearCurrentResult();
-
-    // ... 클래스 private 멤버 영역
-    COLORREF m_currResultColor = RGB(0, 0, 0);
-    CString  m_currResultText; // "정상"/"불량"/"에러"
-    afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
-    afx_msg void OnCustomDrawHistory(NMHDR* pNMHDR, LRESULT* pResult);
-    afx_msg void OnDblClkHistory(NMHDR* pNMHDR, LRESULT* pResult);
-
+    void UpdateStatistics();
 
     // 히스토리 관리
     void LoadHistoryFromFile();
@@ -84,27 +72,6 @@ private:
     CString GenerateProductId();
     CString GetCurrentTimestamp();
 
-    // JSON 파싱 (임시로 간단하게)
+    // JSON 파싱 (간단 버전)
     bool ParseJsonResponse(const std::string& json, InspectionResult& result);
-
-    //통계 정보 (오늘 검사 건수, 정상/불량 비율)
-    void UpdateStats();
-
-
-};
-
-// ===================== 이미지 미리보기 다이얼로그 =====================
-class CPreviewDlg : public CDialogEx
-{
-public:
-    CPreviewDlg(const CString& left, const CString& right)
-        : CDialogEx(IDD_PREVIEW_DLG), m_left(left), m_right(right) {
-    }
-
-protected:
-    virtual BOOL OnInitDialog();
-
-private:
-    CString m_left, m_right;
-    void LoadToCtrl(int id, const CString& path);
 };
