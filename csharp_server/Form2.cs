@@ -3,331 +3,502 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Net.Sockets;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Windows.Forms.DataVisualization.Charting;
 
 namespace MFCServer1
 {
     public partial class Form2 : Form
     {
-        private Timer _uiTimer;
-        private List<ServerMonitor.InspectionRecord> _logsTabDayRaw = new List<ServerMonitor.InspectionRecord>();
-        private List<object> _lastRealtimeViewRows = new List<object>();
+        private Timer _timer;
 
         public Form2()
         {
             InitializeComponent();
 
-            // 실시간 모니터
-            _uiTimer = new Timer();
-            _uiTimer.Interval = 1000;
-            _uiTimer.Tick += UiTimer_Tick;
-            _uiTimer.Start();
+            InitDataGridLogs();   // 실시간 모니터 탭 그리드(dataGridLogs)
+            InitDgvLogs();        // 생산로그 탭 그리드(dgvLogs)
+            InitCharts();         // 생산현황 탭 차트 설정
+            InitTimer();          // 1초 주기 갱신 타이머
+            _ = KickPythonHealthOnce(); // 파이썬 헬스체크 1회
+        }
 
-            dataGridLogs.CellDoubleClick += (s, e) =>
+        // ---------------------------------
+        // 실시간 모니터 탭 (dataGridLogs) 초기화
+        // ---------------------------------
+        private void InitDataGridLogs()
+        {
+            dataGridLogs.AutoGenerateColumns = false;
+            dataGridLogs.AllowUserToAddRows = false;
+            dataGridLogs.AllowUserToDeleteRows = false;
+            dataGridLogs.AllowUserToResizeRows = false;
+            dataGridLogs.ReadOnly = true;
+            dataGridLogs.MultiSelect = false;
+            dataGridLogs.RowHeadersVisible = false;
+            dataGridLogs.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dataGridLogs.BackgroundColor = Color.FromArgb(240, 240, 240);
+
+            dataGridLogs.Columns.Clear();
+
+            var colTime = new DataGridViewTextBoxColumn
+            {
+                HeaderText = "시간",
+                DataPropertyName = "Time",
+                Width = 140
+            };
+            dataGridLogs.Columns.Add(colTime);
+
+            var colResult = new DataGridViewTextBoxColumn
+            {
+                HeaderText = "결과",
+                DataPropertyName = "Result",
+                Width = 60
+            };
+            dataGridLogs.Columns.Add(colResult);
+
+            var colReason = new DataGridViewTextBoxColumn
+            {
+                HeaderText = "사유",
+                DataPropertyName = "Reason",
+                Width = 180
+            };
+            dataGridLogs.Columns.Add(colReason);
+
+            var colTop = new DataGridViewTextBoxColumn
+            {
+                HeaderText = "TOP 경로",
+                DataPropertyName = "TopPath",
+                Width = 200
+            };
+            dataGridLogs.Columns.Add(colTop);
+
+            var colSide = new DataGridViewTextBoxColumn
+            {
+                HeaderText = "SIDE 경로",
+                DataPropertyName = "SidePath",
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill
+            };
+            dataGridLogs.Columns.Add(colSide);
+
+            dataGridLogs.CellFormatting += (s, e) =>
             {
                 if (e.RowIndex < 0) return;
-                var rec = RowToRecordFromRealtime(e.RowIndex);
-                if (rec == null) return;
-                using (var dlg = new InspectionDetailForm(rec))
-                    dlg.ShowDialog(this);
-            };
+                if (dataGridLogs.Columns[e.ColumnIndex].DataPropertyName != "Result") return;
 
-            // 생산현황
-            btnRefreshStats.Click += (s, e) =>
-            {
-                var dayLogs = DatabaseService.GetDailyInspections(dtStatsDate.Value.Date);
-                UpdateStatsCharts(dayLogs); // 이제 dayLogs를 직접 넣는다
-            };
+                var rowObj = dataGridLogs.Rows[e.RowIndex].DataBoundItem as GridRow;
+                if (rowObj == null) return;
 
-            // 생산로그
-            btnRefreshLogs.Click += (s, e) =>
-            {
-                _logsTabDayRaw = DatabaseService.GetDailyInspections(dtLogsDate.Value.Date);
-                RefreshLogsGrid();
-            };
-            rdoFilterAll.CheckedChanged += (s, e) => { if (rdoFilterAll.Checked) RefreshLogsGrid(); };
-            rdoFilterOK.CheckedChanged += (s, e) => { if (rdoFilterOK.Checked) RefreshLogsGrid(); };
-            rdoFilterNG.CheckedChanged += (s, e) => { if (rdoFilterNG.Checked) RefreshLogsGrid(); };
-
-            dgvLogs.CellDoubleClick += (s, e) =>
-            {
-                if (e.RowIndex < 0) return;
-                var rec = RowToRecordFromLogsTab(e.RowIndex);
-                if (rec == null) return;
-                using (var dlg = new InspectionDetailForm(rec))
-                    dlg.ShowDialog(this);
-            };
-        }
-
-        // ─────────────────────────────
-        // 탭1 실시간 모니터
-        // ─────────────────────────────
-        private void UiTimer_Tick(object sender, EventArgs e)
-        {
-            // DB에서 최신 N개 가져온다
-            var latestLogs = DatabaseService
-                .GetRecentInspections(200)
-                .OrderByDescending(x => x.Time)
-                .ToList();
-
-            // KPI
-            int total = latestLogs.Count;
-            int okCount = latestLogs.Count(r =>
-                r.Result.Contains("정상") &&
-                !r.Result.Contains("비정상") &&
-                !r.Result.Contains("에러"));
-            int ngCount = total - okCount;
-            double rate = (total > 0) ? (ngCount * 100.0 / total) : 0.0;
-
-            lblTotalValue.Text = total.ToString();
-            lblOkValue.Text = okCount.ToString();
-            lblNgValue.Text = ngCount.ToString();
-            lblRateValue.Text = $"{rate:0.0} %";
-
-            // 그리드 view rows
-            var newViewRows = latestLogs
-                .Select((r, idx) => new
+                if (rowObj.Result == "불량" || rowObj.Result == "비정상")
                 {
-                    번호 = latestLogs.Count - idx,
-                    시간 = r.Time.ToString("yyyy-MM-dd HH:mm:ss"),
-                    결과 = r.Result,
-                    불량사유 = r.Reason,
-                    TOP경로 = r.TopPath,
-                    SIDE경로 = r.SidePath
-                })
-                .ToList<object>();
-
-            string selKey = GetCurrentRealtimeSelectionKey();
-            bool changed = DifferentRealtimeRows(_lastRealtimeViewRows, newViewRows);
-
-            if (changed)
-            {
-                dataGridLogs.DataSource = null;
-                dataGridLogs.DataSource = newViewRows;
-                _lastRealtimeViewRows = newViewRows;
-                dataGridLogs.AutoResizeColumns();
-            }
-
-            if (!string.IsNullOrEmpty(selKey))
-                RestoreRealtimeSelection(selKey);
-
-            // 상태 라벨
-            lblTcpStatus.Text = "TCP STATUS: " + ServerMonitor.ServerStatus;
-            lblLastClient.Text = "LastClient: " + ServerMonitor.LastClientInfo;
-            lblPythonError.Text = "LastError: " + ServerMonitor.PythonLastErrorMessage;
-            lblPythonStatus.Text = ServerMonitor.PythonAlive ? "PYTHON OK" : "PYTHON DOWN";
-            lblPythonStatus.ForeColor = ServerMonitor.PythonAlive ? Color.Green : Color.Red;
-
-            // 최근 이미지
-            if (latestLogs.Count > 0)
-            {
-                var newest = latestLogs[0];
-                lblLastResult.Text = "LastResult: " + newest.Result;
-
-                TryLoadPreviewImage(newest.TopPath, picTop);
-                TryLoadPreviewImage(newest.SidePath, picSide);
-            }
-        }
-
-        private string GetCurrentRealtimeSelectionKey()
-        {
-            if (dataGridLogs.CurrentRow == null) return null;
-            if (dataGridLogs.CurrentRow.Index < 0) return null;
-            var row = dataGridLogs.CurrentRow;
-            string t = Convert.ToString(row.Cells["시간"].Value);
-            string top = Convert.ToString(row.Cells["TOP경로"].Value);
-            string sid = Convert.ToString(row.Cells["SIDE경로"].Value);
-            return $"{t}|{top}|{sid}";
-        }
-
-        private void RestoreRealtimeSelection(string selKey)
-        {
-            if (string.IsNullOrEmpty(selKey)) return;
-            foreach (DataGridViewRow r in dataGridLogs.Rows)
-            {
-                string t = Convert.ToString(r.Cells["시간"].Value);
-                string top = Convert.ToString(r.Cells["TOP경로"].Value);
-                string sid = Convert.ToString(r.Cells["SIDE경로"].Value);
-                string key = $"{t}|{top}|{sid}";
-                if (key == selKey)
-                {
-                    dataGridLogs.CurrentCell = r.Cells[0];
-                    r.Selected = true;
-                    dataGridLogs.FirstDisplayedScrollingRowIndex = r.Index;
-                    break;
+                    e.CellStyle.ForeColor = Color.Red;
                 }
-            }
-        }
+                else if (rowObj.Result == "정상")
+                {
+                    e.CellStyle.ForeColor = Color.LimeGreen;
+                }
+                else if (rowObj.Result == "에러")
+                {
+                    e.CellStyle.ForeColor = Color.Orange;
+                }
+            };
 
-        private bool DifferentRealtimeRows(List<object> a, List<object> b)
-        {
-            if (a.Count != b.Count) return true;
-            for (int i = 0; i < a.Count; i++)
+            dataGridLogs.CellClick += (s, e) =>
             {
-                if (!a[i].Equals(b[i]))
-                    return true;
-            }
-            return false;
+                if (e.RowIndex < 0) return;
+                var rowObj = dataGridLogs.Rows[e.RowIndex].DataBoundItem as GridRow;
+                if (rowObj == null) return;
+
+                ShowImages(rowObj.TopPath, rowObj.SidePath);
+                UpdateLastResultLabels(rowObj);
+            };
         }
 
-        private ServerMonitor.InspectionRecord RowToRecordFromRealtime(int rowIndex)
+        // ---------------------------------
+        // 생산로그 탭 (dgvLogs) 초기화
+        // ---------------------------------
+        private void InitDgvLogs()
         {
-            if (rowIndex < 0 || rowIndex >= dataGridLogs.Rows.Count)
-                return null;
+            dgvLogs.AutoGenerateColumns = false;
+            dgvLogs.AllowUserToAddRows = false;
+            dgvLogs.AllowUserToDeleteRows = false;
+            dgvLogs.AllowUserToResizeRows = false;
+            dgvLogs.ReadOnly = true;
+            dgvLogs.MultiSelect = false;
+            dgvLogs.RowHeadersVisible = false;
+            dgvLogs.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dgvLogs.BackgroundColor = Color.White;
 
-            string timeText = Convert.ToString(dataGridLogs.Rows[rowIndex].Cells["시간"].Value);
-            string topPath = Convert.ToString(dataGridLogs.Rows[rowIndex].Cells["TOP경로"].Value);
-            string sidePath = Convert.ToString(dataGridLogs.Rows[rowIndex].Cells["SIDE경로"].Value);
+            dgvLogs.Columns.Clear();
 
-            // 방금 UI에 쓴 DB기반 리스트에서 다시 찾아오기
-            var latestLogs = DatabaseService.GetRecentInspections(200);
-            var rec = latestLogs.FirstOrDefault(r =>
-                r.Time.ToString("yyyy-MM-dd HH:mm:ss") == timeText &&
-                r.TopPath == topPath &&
-                r.SidePath == sidePath
-            );
-            return rec;
-        }
-
-        private void TryLoadPreviewImage(string path, PictureBox box)
-        {
-            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            var colDT = new DataGridViewTextBoxColumn
             {
-                box.Image = null;
-                return;
-            }
+                HeaderText = "시간",
+                DataPropertyName = "Time",
+                Width = 140
+            };
+            dgvLogs.Columns.Add(colDT);
+
+            var colRes = new DataGridViewTextBoxColumn
+            {
+                HeaderText = "결과",
+                DataPropertyName = "Result",
+                Width = 60
+            };
+            dgvLogs.Columns.Add(colRes);
+
+            var colWhy = new DataGridViewTextBoxColumn
+            {
+                HeaderText = "사유",
+                DataPropertyName = "Reason",
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill
+            };
+            dgvLogs.Columns.Add(colWhy);
+
+            // 라디오 버튼 & 조회 버튼 이벤트
+            rdoFilterAll.CheckedChanged += (s, e) => { if (rdoFilterAll.Checked) RefreshLogsTab(); };
+            rdoFilterOK.CheckedChanged += (s, e) => { if (rdoFilterOK.Checked) RefreshLogsTab(); };
+            rdoFilterNG.CheckedChanged += (s, e) => { if (rdoFilterNG.Checked) RefreshLogsTab(); };
+
+            btnRefreshLogs.Click += (s, e) => RefreshLogsTab();
+
+            // 폼 최초 로드시 한 번 조회
+            RefreshLogsTab();
+        }
+
+        // ---------------------------------
+        // 차트 / 생산현황 탭 초기화
+        // ---------------------------------
+        private void InitCharts()
+        {
+            // 파이 차트
+            chartPie.Series.Clear();
+            chartPie.ChartAreas.Clear();
+            chartPie.Legends.Clear();
+
+            var pieArea = new ChartArea("PieArea");
+            chartPie.ChartAreas.Add(pieArea);
+
+            var pieLegend = new Legend("PieLegend");
+            chartPie.Legends.Add(pieLegend);
+
+            var sPie = new Series("PieSeries")
+            {
+                ChartType = SeriesChartType.Pie,
+                ChartArea = "PieArea",
+                Legend = "PieLegend"
+            };
+            chartPie.Series.Add(sPie);
+
+            // 막대 차트
+            chartBar.Series.Clear();
+            chartBar.ChartAreas.Clear();
+            chartBar.Legends.Clear();
+
+            var barArea = new ChartArea("BarArea");
+            chartBar.ChartAreas.Add(barArea);
+
+            var barLegend = new Legend("BarLegend");
+            chartBar.Legends.Add(barLegend);
+
+            var sOk = new Series("정상")
+            {
+                ChartType = SeriesChartType.Column,
+                ChartArea = "BarArea",
+                Legend = "BarLegend",
+                Color = Color.FromArgb(100, 0, 128, 0)
+            };
+
+            var sNg = new Series("불량")
+            {
+                ChartType = SeriesChartType.Column,
+                ChartArea = "BarArea",
+                Legend = "BarLegend",
+                Color = Color.FromArgb(100, 255, 0, 0)
+            };
+
+            chartBar.Series.Add(sOk);
+            chartBar.Series.Add(sNg);
+
+            btnRefreshStats.Click += (s, e) => RefreshStatsTab();
+        }
+
+        // ---------------------------------
+        // 타이머 (실시간 모니터 탭 갱신용)
+        // ---------------------------------
+        private void InitTimer()
+        {
+            _timer = new Timer();
+            _timer.Interval = 1000; // 1초
+            _timer.Tick += Timer_Tick;
+            _timer.Start();
+        }
+
+        // ---------------------------------
+        // 파이썬 서버 헬스체크 (최초 1회)
+        // ---------------------------------
+        private async Task KickPythonHealthOnce()
+        {
+            string pythonHost = "10.10.21.110"; // 파이썬 AI 서버 IP
+            int pythonPort = 8009;              // 파이썬 AI 서버 포트
+
             try
             {
-                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var cli = new TcpClient())
                 {
-                    var ms = new MemoryStream();
-                    fs.CopyTo(ms);
-                    ms.Position = 0;
-                    box.Image = Image.FromStream(ms);
+                    await cli.ConnectAsync(pythonHost, pythonPort);
+
+                    // 파이썬 서버 살아있음
+                    ServerMonitor.PythonAlive = true;
+                    ServerMonitor.PythonLastErrorMessage = "";
                 }
             }
-            catch { }
-        }
-
-        // ─────────────────────────────
-        // 탭2 생산현황 (차트/요약)
-        // ─────────────────────────────
-        private void UpdateStatsCharts(List<ServerMonitor.InspectionRecord> dayLogs)
-        {
-            // dayLogs는 하루치(DB에서 이미 필터한 결과)
-            int total = dayLogs.Count;
-            int okCount = dayLogs.Count(r =>
-                r.Result.Contains("정상") &&
-                !r.Result.Contains("비정상") &&
-                !r.Result.Contains("에러"));
-            int ngCount = total - okCount;
-            double rate = (total > 0) ? (ngCount * 100.0 / total) : 0.0;
-
-            lblStatsSummaryTotal.Text = $"총 검사: {total}";
-            lblStatsSummaryOk.Text = $"정상: {okCount}";
-            lblStatsSummaryNg.Text = $"불량: {ngCount}";
-            lblStatsSummaryRate.Text = $"불량률: {rate:0.0} %";
-
-            // 파이
-            var pieSeries = chartPie.Series["PieSeries"];
-            pieSeries.Points.Clear();
-            int pOK = pieSeries.Points.AddY(okCount);
-            pieSeries.Points[pOK].LegendText = "정상";
-            pieSeries.Points[pOK].Label = $"정상 {okCount}";
-            pieSeries.Points[pOK].Color = Color.FromArgb(0, 128, 0);
-
-            int pNG = pieSeries.Points.AddY(ngCount);
-            pieSeries.Points[pNG].LegendText = "불량";
-            pieSeries.Points[pNG].Label = $"불량 {ngCount}";
-            pieSeries.Points[pNG].Color = Color.Red;
-
-            // 막대 (시간대별)
-            var grouped = dayLogs
-                .GroupBy(r => r.Time.Hour)
-                .OrderBy(g => g.Key)
-                .Select(g => new
-                {
-                    Hour = g.Key,
-                    Ok = g.Count(x =>
-                        x.Result.Contains("정상") &&
-                        !x.Result.Contains("비정상") &&
-                        !x.Result.Contains("에러")),
-                    Ng = g.Count(x =>
-                        !(x.Result.Contains("정상") &&
-                          !x.Result.Contains("비정상") &&
-                          !x.Result.Contains("에러")))
-                })
-                .ToList();
-
-            var seriesOK = chartBar.Series["정상"];
-            var seriesNG = chartBar.Series["불량"];
-            seriesOK.Points.Clear();
-            seriesNG.Points.Clear();
-
-            foreach (var h in grouped)
+            catch (Exception ex)
             {
-                string hourLabel = h.Hour.ToString("D2") + "시";
-                int a = seriesOK.Points.AddXY(hourLabel, h.Ok);
-                seriesOK.Points[a].ToolTip = $"정상 {h.Ok}";
-                int b2 = seriesNG.Points.AddXY(hourLabel, h.Ng);
-                seriesNG.Points[b2].ToolTip = $"불량 {h.Ng}";
+                // 파이썬 서버 연결 실패
+                ServerMonitor.PythonAlive = false;
+                ServerMonitor.PythonLastErrorMessage = ex.Message;
             }
         }
 
-        // ─────────────────────────────
-        // 탭3 생산로그
-        // ─────────────────────────────
-        private void RefreshLogsGrid()
+
+        // ---------------------------------
+        // 실시간 모니터 탭 주기 갱신
+        // ---------------------------------
+        private void Timer_Tick(object sender, EventArgs e)
         {
-            IEnumerable<ServerMonitor.InspectionRecord> filtered = _logsTabDayRaw;
-
-            if (rdoFilterOK.Checked)
+            try
             {
-                filtered = filtered.Where(r =>
-                    r.Result.Contains("정상") &&
-                    !r.Result.Contains("비정상") &&
-                    !r.Result.Contains("에러"));
-            }
-            else if (rdoFilterNG.Checked)
-            {
-                filtered = filtered.Where(r =>
-                    !(r.Result.Contains("정상") &&
-                      !r.Result.Contains("비정상") &&
-                      !r.Result.Contains("에러")));
-            }
+                var recents = ServerMonitor.GetRecent();
 
-            var viewData = filtered
-                .Select((r, idx) => new
+                // dataGridLogs 바인딩용
+                var gridRows = recents
+                    .Select(r => new GridRow
+                    {
+                        Time = r.Time.ToString("yyyy-MM-dd HH:mm:ss"),
+                        Result = r.Result,
+                        Reason = r.Reason,
+                        TopPath = r.TopPath,
+                        SidePath = r.SidePath,
+                        Ref = r
+                    })
+                    .ToList();
+
+                dataGridLogs.DataSource = gridRows;
+                dataGridLogs.Refresh();
+
+                // 가장 최근 1건으로 이미지/라벨 갱신
+                var latest = recents.FirstOrDefault();
+                if (latest != null)
                 {
-                    번호 = idx + 1,
-                    시간 = r.Time.ToString("HH:mm:ss"),
-                    결과 = r.Result,
-                    불량사유 = r.Reason,
-                    TOP = r.TopPath,
-                    SIDE = r.SidePath
+                    ShowImages(latest.TopPath, latest.SidePath);
+                    UpdateLastResultLabels(new GridRow
+                    {
+                        Time = latest.Time.ToString("yyyy-MM-dd HH:mm:ss"),
+                        Result = latest.Result,
+                        Reason = latest.Reason,
+                        TopPath = latest.TopPath,
+                        SidePath = latest.SidePath,
+                        Ref = latest
+                    });
+                }
+
+                // 상단 KPI 갱신
+                UpdateKpi(recents);
+
+                // 하단 상태 라벨 갱신
+                UpdateStatusLabels();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("[Timer_Tick] " + ex.Message);
+            }
+        }
+
+        // ---------------------------------
+        // TCP / Python 상태 라벨들
+        // ---------------------------------
+        private void UpdateStatusLabels()
+        {
+            lblTcpStatus.Text = "TCP STATUS: " + ServerMonitor.ServerStatus;
+            lblTcpStatus.ForeColor =
+                ServerMonitor.ServerStatus.StartsWith("True") ? Color.LimeGreen : Color.Red;
+
+            lblPythonStatus.Text = ServerMonitor.PythonAlive ? "PYTHON OK" : "PYTHON DOWN";
+            lblPythonStatus.ForeColor = ServerMonitor.PythonAlive ? Color.LimeGreen : Color.Red;
+
+            lblPythonError.Text = "LastError: " + (ServerMonitor.PythonLastErrorMessage ?? "");
+            lblLastClient.Text = "LastClient: " + (ServerMonitor.LastClientInfo ?? "");
+        }
+
+        // ---------------------------------
+        // 실시간 모니터 탭: 마지막 결과 라벨
+        // ---------------------------------
+        private void UpdateLastResultLabels(GridRow row)
+        {
+            string txt = "LastResult: " + (row.Result ?? "-");
+            if (!string.IsNullOrEmpty(row.Reason))
+                txt += " (" + row.Reason + ")";
+            if (!string.IsNullOrEmpty(row.Time))
+                txt += " @" + row.Time;
+
+            lblLastResult.Text = txt;
+            lblLastResult.ForeColor =
+                (row.Result == "불량" || row.Result == "비정상") ? Color.Red :
+                (row.Result == "정상") ? Color.LimeGreen :
+                (row.Result == "에러") ? Color.Orange :
+                Color.White;
+        }
+
+        // ---------------------------------
+        // 실시간 모니터 탭 KPI (총 검사 / 정상 / 불량 / 불량률)
+        // → ServerMonitor 메모리 기준
+        // ---------------------------------
+        private void UpdateKpi(List<ServerMonitor.InspectionRecord> list)
+        {
+            int total = list.Count;
+            int ok = 0;
+            int ng = 0;
+
+            foreach (var r in list)
+            {
+                if (r.Result == "정상") ok++;
+                else if (r.Result == "불량" || r.Result == "비정상") ng++;
+            }
+
+            double rate = total > 0 ? (double)ng * 100.0 / (double)total : 0.0;
+
+            lblTotalValue.Text = total.ToString();
+            lblOkValue.Text = ok.ToString();
+            lblNgValue.Text = ng.ToString();
+            lblRateValue.Text = rate.ToString("0.0") + " %";
+
+            lblNgValue.ForeColor = ng > 0 ? Color.Red : Color.White;
+            lblRateValue.ForeColor = ng > 0 ? Color.Red : Color.MidnightBlue;
+        }
+
+        // ---------------------------------
+        // 실시간 탭 이미지 프리뷰
+        // ---------------------------------
+        private void ShowImages(string topPath, string sidePath)
+        {
+            SafeLoadToPictureBox(picTop, topPath);
+            SafeLoadToPictureBox(picSide, sidePath);
+        }
+
+        private void SafeLoadToPictureBox(PictureBox pb, string path)
+        {
+            if (pb == null) return;
+            if (string.IsNullOrEmpty(path)) return;
+            if (!File.Exists(path)) return;
+
+            try
+            {
+                if (pb.Image != null)
+                {
+                    var old = pb.Image;
+                    pb.Image = null;
+                    old.Dispose();
+                }
+
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var ms = new MemoryStream())
+                {
+                    fs.CopyTo(ms);
+                    ms.Position = 0;
+                    pb.Image = Image.FromStream(ms);
+                }
+
+                pb.SizeMode = PictureBoxSizeMode.Zoom;
+                pb.BackColor = Color.Black;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("[SafeLoadToPictureBox] " + ex.Message);
+            }
+        }
+
+        // ---------------------------------
+        // 생산현황 탭 새로고침 (DB에서 집계 → 라벨/파이/막대)
+        // ---------------------------------
+        private void RefreshStatsTab()
+        {
+            // 기준 날짜: 생산로그 탭에서 쓰는 dtLogsDate 기준으로 맞춘다
+            DateTime targetDate = dtLogsDate.Value.Date;
+
+            // 1) 일일 요약 (상단 라벨 + 파이차트)
+            var daily = DatabaseService.LoadDailySummary(targetDate);
+
+            lblStatsSummaryTotal.Text = "총 검사: " + daily.Total;
+            lblStatsSummaryOk.Text = "정상: " + daily.Ok;
+            lblStatsSummaryNg.Text = "불량: " + daily.Ng;
+            lblStatsSummaryRate.Text = "불량률: " + daily.NgRatePercent.ToString("0.0") + " %";
+
+            var pie = chartPie.Series["PieSeries"];
+            pie.Points.Clear();
+            pie.Points.AddXY("정상", daily.Ok);
+            pie.Points.AddXY("불량", daily.Ng);
+
+            // 2) 시간대별 집계 (막대 차트)
+            var hourly = DatabaseService.LoadHourlySummary(targetDate);
+
+            var sOk = chartBar.Series["정상"];
+            var sNg = chartBar.Series["불량"];
+            sOk.Points.Clear();
+            sNg.Points.Clear();
+
+            foreach (var h in hourly)
+            {
+                string label = h.Hour.ToString("00") + "시";
+                sOk.Points.AddXY(label, h.Ok);
+                sNg.Points.AddXY(label, h.Ng);
+            }
+        }
+
+        // ---------------------------------
+        // 생산로그 탭 새로고침 (DB에서 목록 → dgvLogs)
+        // ---------------------------------
+        private void RefreshLogsTab()
+        {
+            // 날짜
+            DateTime selDate = dtLogsDate.Value.Date;
+
+            // 필터 ("ALL" / "OK" / "NG")
+            string filter = "ALL";
+            if (rdoFilterOK.Checked) filter = "OK";
+            if (rdoFilterNG.Checked) filter = "NG";
+
+            // DB 조회
+            List<DatabaseService.InspectionRecord> rowsFromDb =
+                DatabaseService.LoadInspectionsByDate(selDate, filter);
+
+            // DataGridView 바인딩용으로 변환
+            var rowsForGrid = rowsFromDb
+                .Select(r => new
+                {
+                    Time = r.Time.ToString("yyyy-MM-dd HH:mm:ss"),
+                    Result = r.Result,
+                    Reason = r.Reason
                 })
                 .ToList();
 
-            dgvLogs.DataSource = viewData;
-            dgvLogs.AutoResizeColumns();
+            dgvLogs.DataSource = rowsForGrid;
             dgvLogs.Refresh();
         }
 
-        private ServerMonitor.InspectionRecord RowToRecordFromLogsTab(int rowIndex)
+        // ---------------------------------
+        // dataGridLogs용 행 뷰 모델
+        // ---------------------------------
+        private class GridRow
         {
-            if (rowIndex < 0 || rowIndex >= dgvLogs.Rows.Count)
-                return null;
+            public string Time { get; set; }
+            public string Result { get; set; }
+            public string Reason { get; set; }
+            public string TopPath { get; set; }
+            public string SidePath { get; set; }
 
-            string t = Convert.ToString(dgvLogs.Rows[rowIndex].Cells["시간"].Value);
-            string top = Convert.ToString(dgvLogs.Rows[rowIndex].Cells["TOP"].Value);
-            string sid = Convert.ToString(dgvLogs.Rows[rowIndex].Cells["SIDE"].Value);
-
-            var rec = _logsTabDayRaw.FirstOrDefault(r =>
-                r.Time.ToString("HH:mm:ss") == t &&
-                r.TopPath == top &&
-                r.SidePath == sid
-            );
-            return rec;
+            public ServerMonitor.InspectionRecord Ref { get; set; }
         }
     }
 }
