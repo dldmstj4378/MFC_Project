@@ -12,16 +12,26 @@ from ultralytics import YOLO
 # YOLO 설정
 # ======================================
 DEVICE = 0 if torch.cuda.is_available() else "cpu"
-YOLO_WEIGHTS = "best.pt"   # 학습한 모델 파일명 (절대/상대경로 모두 가능)
+YOLO_WEIGHTS_TOP = "best.pt"          # 상단 카메라용 모델
+YOLO_WEIGHTS_SIDE = "side_best.pt"    # 측면 카메라용 모델
 
-_yolo_model = None
-def get_yolo():
-    """YOLO 모델 로드 (최초 1회만 로드)"""
-    global _yolo_model
-    if _yolo_model is None:
-        print(f"[YOLO] Loading {YOLO_WEIGHTS} on {DEVICE} ...")
-        _yolo_model = YOLO(YOLO_WEIGHTS)
-    return _yolo_model
+_yolo_top = None
+_yolo_side = None
+
+def get_yolo(camera_type=None):
+    """카메라 타입(top/side)에 따라 모델 구분 로드"""
+    global _yolo_top, _yolo_side
+
+    if camera_type == "side":
+        if _yolo_side is None:
+            print(f"[YOLO] Loading {YOLO_WEIGHTS_SIDE} on {DEVICE} ...")
+            _yolo_side = YOLO(YOLO_WEIGHTS_SIDE)
+        return _yolo_side
+    else:
+        if _yolo_top is None:
+            print(f"[YOLO] Loading {YOLO_WEIGHTS_TOP} on {DEVICE} ...")
+            _yolo_top = YOLO(YOLO_WEIGHTS_TOP)
+        return _yolo_top
 
 
 # ======================================
@@ -60,19 +70,43 @@ def infer_image(img_bgr, camera_type=None):
             "classes": [],
             "bboxes": [],
             "inference_ms": 0.0,
-            "model_version": f"yolo8-{YOLO_WEIGHTS}",
+            "model_version": f"yolo8-{YOLO_WEIGHTS_TOP}",
             "error": "invalid image"
         }
 
-    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-    model = get_yolo()
+    # # ===============================
+    # # ⚙️ 전처리: 측면만 대비/엣지 강화
+    # # ===============================
+    if camera_type == "side":
+        # 명암 대비 및 밝기 조정
+        img_bgr = cv2.convertScaleAbs(img_bgr, alpha=1.4, beta=15)
 
+        # 윤곽선(엣지) 검출
+        gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 60, 180)  # 엣지 검출
+        edges_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+
+        # 원본 이미지에 엣지 일부 섞기 (찌그러진 부분 대비 향상)
+        img_bgr = cv2.addWeighted(img_bgr, 0.85, edges_colored, 0.15, 0)
+
+        # 약한 노이즈 제거
+        img_bgr = cv2.GaussianBlur(img_bgr, (3, 3), 0)
+
+        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+
+    else:
+        # ✅ 상단은 변환 없이 그대로 사용 (YOLO는 BGR도 읽을 수 있음)
+        img_rgb = img_bgr
+
+    # ===============================
     # YOLO 추론
+    # ===============================
+    model = get_yolo(camera_type)
+
     results = model.predict(
         source=img_rgb,
         imgsz=640,
-        conf=0.3,   # 탐지 민감도 (0.25~0.4 사이 권장)
-
+        conf=0.1,
         iou=0.45,
         device=DEVICE,
         verbose=False
@@ -91,8 +125,14 @@ def infer_image(img_bgr, camera_type=None):
 
         for (x1, y1, x2, y2), c, k in zip(xyxy, conf, cls):
             raw_label = names.get(k, str(k))
-            label = LABEL_MAP.get(raw_label, raw_label)  # 라벨 한글화
 
+            # 🧩 카메라 타입별 클래스 필터
+            if camera_type == "top" and not raw_label.startswith("top_"):
+                continue
+            if camera_type == "side" and not raw_label.startswith("side_"):
+                continue
+
+            label = LABEL_MAP.get(raw_label, raw_label)
             w, h = int(x2 - x1), int(y2 - y1)
             bboxes.append({
                 "x": int(x1),
@@ -105,23 +145,32 @@ def infer_image(img_bgr, camera_type=None):
             if c > max_conf:
                 max_conf = float(c)
 
-    # ======== 추가 디버그 ========
-    print("🔍 [DEBUG] Camera:", camera_type)
-    print("🔍 [DEBUG] Detected:", [b["label"] for b in bboxes])
-    print("🔍 [DEBUG] Scores:", [b["score"] for b in bboxes])
+    # ======== 디버그 로그 ========
+    print("🔍 Camera:", camera_type)
+    print("🔍 Detected:", [b["label"] for b in bboxes])
+    print("🔍 Scores:", [b["score"] for b in bboxes])
     # ===========================
 
-    # 불량 판정 로직
+    # ===============================
+    # 🧩 불량 판정 로직 (top은 conf 기준, side는 무조건 불량)
+    # ===============================
     defect_detected = False
-    THRESHOLD = 0.8  # 신뢰도 기준
+    THRESHOLD = 0.5
 
     if camera_type == "top":
-        defect_detected = any(b["label"] in DEFECT_LABELS_TOP and b["score"] >= THRESHOLD for b in bboxes)
+        # top은 conf(신뢰도) 기준으로 판정
+        defect_detected = any(
+            b["label"] in DEFECT_LABELS_TOP and b["score"] >= THRESHOLD
+            for b in bboxes
+        )
+
     elif camera_type == "side":
-        defect_detected = any(b["label"] in DEFECT_LABELS_SIDE and b["score"] >= THRESHOLD for b in bboxes)
+        # side는 불량 라벨이 하나라도 있으면 무조건 불량
+        detected_labels = [b["label"] for b in bboxes]
+        if any(lbl in DEFECT_LABELS_SIDE for lbl in detected_labels):
+            defect_detected = True
 
     t1 = time.time()
-
 
     return {
         "ok": True,
@@ -131,8 +180,9 @@ def infer_image(img_bgr, camera_type=None):
         "classes": [{"name": b["label"], "score": b["score"]} for b in bboxes],
         "bboxes": bboxes,
         "inference_ms": (t1 - t0) * 1000.0,
-        "model_version": f"yolo8-{YOLO_WEIGHTS}"
+        "model_version": f"yolo8-{YOLO_WEIGHTS_TOP if camera_type=='top' else YOLO_WEIGHTS_SIDE}"
     }
+
 
 
 # ======================================
@@ -155,7 +205,6 @@ def recv_all(sock, length: int):
 def handle_client(conn: socket.socket, addr):
     print(f"[AI Server] Accepted connection from {addr}")
     try:
-        # 첫 바이트 = 모드
         mode_b = conn.recv(1)
         if not mode_b:
             print("[-] empty first byte, closing.")
@@ -216,7 +265,6 @@ def handle_client(conn: socket.socket, addr):
 
             payload = json.dumps(final, ensure_ascii=False).encode("utf-8")
             conn.sendall(payload)
-
             print("[AI] Dual done. Sent JSON & closing.")
             return
 
@@ -226,7 +274,6 @@ def handle_client(conn: socket.socket, addr):
         if mode == 0x03:
             print("[AI] Single request...")
 
-            # 라벨 길이
             len_label_b = recv_all(conn, 4)
             if not len_label_b:
                 print("[-] single: no label len")
@@ -238,7 +285,6 @@ def handle_client(conn: socket.socket, addr):
                 return
             cam_label = label_b.decode("utf-8") if len_label > 0 else None
 
-            # 이미지 수신
             len_img_b = recv_all(conn, 4)
             if not len_img_b:
                 print("[-] single: no img len")
@@ -260,13 +306,9 @@ def handle_client(conn: socket.socket, addr):
 
             payload = json.dumps(final, ensure_ascii=False).encode("utf-8")
             conn.sendall(payload)
-
             print("[AI] Single done. Sent JSON & closing.")
             return
 
-        # ----------------------------
-        # 정의 안 된 모드
-        # ----------------------------
         print(f"[AI] Unknown mode byte: {mode_b!r}. Closing.")
         return
 
@@ -285,7 +327,7 @@ def handle_client(conn: socket.socket, addr):
 # 메인 서버 루프
 # ======================================
 def main():
-    HOST = "10.10.21.110"   # 환경에 맞게 변경 가능
+    HOST = "10.10.21.110"
     PORT = 8009
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
