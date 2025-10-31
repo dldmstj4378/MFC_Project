@@ -69,6 +69,8 @@ namespace MFCServer1
         private RadioButton rdoFilterNG;
         private DataGridView dgvLogs;
 
+
+
         /// <summary>
         /// Dispose
         /// </summary>

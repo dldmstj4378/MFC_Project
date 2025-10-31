@@ -7,6 +7,7 @@
 #define IDD_ABOUTBOX                    100
 #define IDS_ABOUTBOX                    101
 #define IDD_CANCLIENT_DIALOG            102
+#define IDC_CANCLIENT_DIALOG            102
 #define IDR_MAINFRAME                   128
 #define IDC_BTN_START                   1001
 #define IDC_STATIC_STATUS               1002

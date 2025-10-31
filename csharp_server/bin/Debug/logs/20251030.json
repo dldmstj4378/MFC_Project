@@ -1,0 +1,51 @@
+[
+  {
+    "Time": "2025-10-30T14:15:22.4716224+09:00",
+    "Result": "에러",
+    "Reason": "레거시세트: TOP=-, SIDE=-",
+    "TopPath": "C:\\captures\\20251030\\TOP_20251030_141518_545.jpg",
+    "SidePath": "C:\\captures\\20251030\\SIDE_20251030_141519_150.jpg"
+  },
+  {
+    "Time": "2025-10-30T12:38:18.6822078+09:00",
+    "Result": "정상",
+    "Reason": "레거시세트: TOP=정상, SIDE=정상",
+    "TopPath": "C:\\captures\\20251030\\TOP_20251030_123817_218.jpg",
+    "SidePath": "C:\\captures\\20251030\\SIDE_20251030_123817_818.jpg"
+  },
+  {
+    "Time": "2025-10-30T12:33:21.6435702+09:00",
+    "Result": "정상",
+    "Reason": "레거시세트: TOP=정상, SIDE=정상",
+    "TopPath": "C:\\captures\\20251030\\TOP_20251030_123320_337.jpg",
+    "SidePath": "C:\\captures\\20251030\\SIDE_20251030_123320_915.jpg"
+  },
+  {
+    "Time": "2025-10-30T12:33:13.5880973+09:00",
+    "Result": "정상",
+    "Reason": "레거시세트: TOP=정상, SIDE=정상",
+    "TopPath": "C:\\captures\\20251030\\TOP_20251030_123312_308.jpg",
+    "SidePath": "C:\\captures\\20251030\\SIDE_20251030_123312_885.jpg"
+  },
+  {
+    "Time": "2025-10-30T12:32:17.3265723+09:00",
+    "Result": "정상",
+    "Reason": "레거시세트: TOP=정상, SIDE=정상",
+    "TopPath": "C:\\captures\\20251030\\TOP_20251030_123215_760.jpg",
+    "SidePath": "C:\\captures\\20251030\\SIDE_20251030_123216_368.jpg"
+  },
+  {
+    "Time": "2025-10-30T12:27:20.6819026+09:00",
+    "Result": "정상",
+    "Reason": "레거시단일",
+    "TopPath": "C:\\captures\\20251030\\122720167_legacy.png",
+    "SidePath": ""
+  },
+  {
+    "Time": "2025-10-30T12:27:19.9683268+09:00",
+    "Result": "정상",
+    "Reason": "레거시단일",
+    "TopPath": "C:\\captures\\20251030\\122718876_legacy.png",
+    "SidePath": ""
+  }
+]

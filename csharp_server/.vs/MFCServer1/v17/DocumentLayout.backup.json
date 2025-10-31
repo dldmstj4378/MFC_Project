@@ -1,0 +1,209 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\form2.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|solutionrelative:form2.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\databaseservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|solutionrelative:databaseservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|c:\\users\\iot121\\documents\\csharp\\mfc_projcet1\\csharp_server\\tcpinspectionserver.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|solutionrelative:tcpinspectionserver.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|solutionrelative:program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\servermonitor.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|solutionrelative:servermonitor.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\form2.designer.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|solutionrelative:form2.designer.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|c:\\users\\iot121\\documents\\csharp\\mfc_projcet1\\csharp_server\\form2.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form",
+      "RelativeMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|solutionrelative:form2.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\inspectiondetailform.designer.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|solutionrelative:inspectiondetailform.designer.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\inspectiondetailform.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|solutionrelative:inspectiondetailform.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\inspectiondetailform.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form",
+      "RelativeMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|solutionrelative:inspectiondetailform.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\pythontcpclient.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{7C7E6687-5481-434B-8702-563B2400A943}|MFCServer1.csproj|solutionrelative:pythontcpclient.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 3,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{b1e99781-ab81-11d0-b683-00aa00a3ee26}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "DatabaseService.cs",
+              "DocumentMoniker": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\DatabaseService.cs",
+              "RelativeDocumentMoniker": "DatabaseService.cs",
+              "ToolTip": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\DatabaseService.cs",
+              "RelativeToolTip": "DatabaseService.cs",
+              "ViewState": "AgIAAOAAAAAAAAAAAAAQwPYAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-30T01:38:12.132Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "TcpInspectionServer.cs",
+              "DocumentMoniker": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\TcpInspectionServer.cs",
+              "RelativeDocumentMoniker": "TcpInspectionServer.cs",
+              "ToolTip": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\TcpInspectionServer.cs",
+              "RelativeToolTip": "TcpInspectionServer.cs",
+              "ViewState": "AgIAAHgBAAAAAAAAAAAAAIkBAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-30T01:38:21.497Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Form2.cs",
+              "DocumentMoniker": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\Form2.cs",
+              "RelativeDocumentMoniker": "Form2.cs",
+              "ToolTip": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\Form2.cs",
+              "RelativeToolTip": "Form2.cs",
+              "ViewState": "AgIAAKgAAAAAAAAAAAAswLgAAAANAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-30T02:30:48.353Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "Form2.Designer.cs",
+              "DocumentMoniker": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\Form2.Designer.cs",
+              "RelativeDocumentMoniker": "Form2.Designer.cs",
+              "ToolTip": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\Form2.Designer.cs",
+              "RelativeToolTip": "Form2.Designer.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAEcAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-30T02:30:58.807Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 7,
+              "Title": "InspectionDetailForm.Designer.cs",
+              "DocumentMoniker": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\InspectionDetailForm.Designer.cs",
+              "RelativeDocumentMoniker": "InspectionDetailForm.Designer.cs",
+              "ToolTip": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\InspectionDetailForm.Designer.cs",
+              "RelativeToolTip": "InspectionDetailForm.Designer.cs",
+              "ViewState": "AgIAAHEAAAAAAAAAAAAYwJkAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-30T02:51:08.244Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "ServerMonitor.cs",
+              "DocumentMoniker": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\ServerMonitor.cs",
+              "RelativeDocumentMoniker": "ServerMonitor.cs",
+              "ToolTip": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\ServerMonitor.cs",
+              "RelativeToolTip": "ServerMonitor.cs",
+              "ViewState": "AgIAABsAAAAAAAAAAAAqwEIAAAAbAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-30T01:48:43.313Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "Program.cs",
+              "DocumentMoniker": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\Program.cs",
+              "RelativeDocumentMoniker": "Program.cs",
+              "ToolTip": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\Program.cs",
+              "RelativeToolTip": "Program.cs",
+              "ViewState": "AgIAABAAAAAAAAAAAAAAwBQAAAAsAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-30T01:38:19.609Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "Form2.cs [\uB514\uC790\uC778]",
+              "DocumentMoniker": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\Form2.cs",
+              "RelativeDocumentMoniker": "Form2.cs",
+              "ToolTip": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\Form2.cs [\uB514\uC790\uC778]",
+              "RelativeToolTip": "Form2.cs [\uB514\uC790\uC778]",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-30T08:57:10.339Z",
+              "EditorCaption": " [\uB514\uC790\uC778]"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 8,
+              "Title": "InspectionDetailForm.cs",
+              "DocumentMoniker": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\InspectionDetailForm.cs",
+              "RelativeDocumentMoniker": "InspectionDetailForm.cs",
+              "ToolTip": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\InspectionDetailForm.cs",
+              "RelativeToolTip": "InspectionDetailForm.cs",
+              "ViewState": "AgIAAEUAAAAAAAAAAAAYwG0AAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-30T02:51:00.636Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 9,
+              "Title": "InspectionDetailForm.cs [\uB514\uC790\uC778]",
+              "DocumentMoniker": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\InspectionDetailForm.cs",
+              "RelativeDocumentMoniker": "InspectionDetailForm.cs",
+              "ToolTip": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\InspectionDetailForm.cs [\uB514\uC790\uC778]",
+              "RelativeToolTip": "InspectionDetailForm.cs [\uB514\uC790\uC778]",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-30T02:51:00.51Z",
+              "EditorCaption": " [\uB514\uC790\uC778]"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 10,
+              "Title": "PythonTcpClient.cs",
+              "DocumentMoniker": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\PythonTcpClient.cs",
+              "RelativeDocumentMoniker": "PythonTcpClient.cs",
+              "ToolTip": "C:\\Users\\IOT121\\Documents\\csharp\\MFC_Projcet1\\csharp_server\\PythonTcpClient.cs",
+              "RelativeToolTip": "PythonTcpClient.cs",
+              "ViewState": "AgIAAKEAAAAAAAAAAAAYwLkAAAAjAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-30T01:48:16.855Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
